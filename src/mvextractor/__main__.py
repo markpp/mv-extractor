@@ -13,10 +13,12 @@ from mvextractor.videocap import VideoCap
 def draw_motion_vectors(frame, motion_vectors):
     if len(motion_vectors) > 0:
         num_mvs = np.shape(motion_vectors)[0]
+        shift = 2
+        factor = (1 << shift)
         for mv in np.split(motion_vectors, num_mvs):
-            start_pt = (mv[0, 3], mv[0, 4])
-            end_pt = (mv[0, 5], mv[0, 6])
-            cv2.arrowedLine(frame, start_pt, end_pt, (0, 0, 255), 1, cv2.LINE_AA, 0, 0.1)
+            start_pt = (int((mv[0, 5] + mv[0, 7] / mv[0, 9]) * factor + 0.5), int((mv[0, 6] + mv[0, 8] / mv[0, 9]) * factor + 0.5))
+            end_pt = (mv[0, 5] * factor, mv[0, 6] * factor)
+            cv2.arrowedLine(frame, start_pt, end_pt, (0, 0, 255), 1, cv2.LINE_AA, shift, 0.1)
     return frame
 
 
@@ -25,16 +27,20 @@ def main(args=None):
         args = sys.argv[1:]
 
     parser = argparse.ArgumentParser(description='Extract motion vectors from video.')
-    parser.add_argument('video_url', type=str, nargs='?', help='File path or url of the video stream')
-    parser.add_argument('-p', '--preview', action='store_true', help='Show a preview video with overlaid motion vectors')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Show detailled text output')
-    parser.add_argument('-d', '--dump', action='store_true', help='Dump frames, motion vectors, frame types, and timestamps to output directory')
+    parser.add_argument('video_url', type=str, nargs='?', help='file path or url of the video stream')
+    parser.add_argument('-p', '--preview', action='store_true', help='show a preview video with overlaid motion vectors')
+    parser.add_argument('-v', '--verbose', action='store_true', help='show detailled text output')
+    parser.add_argument('-d', '--dump', nargs='?', const=True,
+        help='dump frames, motion vectors, frame types, and timestamps to optionally specified output directory')
     args = parser.parse_args()
 
     if args.dump:
-        now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        if isinstance(args.dump, str):
+            dumpdir = args.dump
+        else:
+            dumpdir = f"out-{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}"
         for child in ["frames", "motion_vectors"]:
-            os.makedirs(os.path.join(f"out-{now}", child), exist_ok=True)
+            os.makedirs(os.path.join(dumpdir, child), exist_ok=True)
 
     cap = VideoCap()
 
@@ -83,13 +89,12 @@ def main(args=None):
 
         # store motion vectors, frames, etc. in output directory
         if args.dump:
-            cv2.imwrite(os.path.join(f"out-{now}", "frames", f"frame-{step}.jpg"), frame)
-            np.save(os.path.join(f"out-{now}", "motion_vectors", f"mvs-{step}.npy"), motion_vectors)
-            with open(os.path.join(f"out-{now}", "timestamps.txt"), "a") as f:
+            cv2.imwrite(os.path.join(dumpdir, "frames", f"frame-{step}.jpg"), frame)
+            np.save(os.path.join(dumpdir, "motion_vectors", f"mvs-{step}.npy"), motion_vectors)
+            with open(os.path.join(dumpdir, "timestamps.txt"), "a") as f:
                 f.write(str(timestamp)+"\n")
-            with open(os.path.join(f"out-{now}", "frame_types.txt"), "a") as f:
+            with open(os.path.join(dumpdir, "frame_types.txt"), "a") as f:
                 f.write(frame_type+"\n")
-
 
         step += 1
 
